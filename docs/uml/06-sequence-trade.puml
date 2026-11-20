@@ -1,0 +1,104 @@
+@startuml 06-sequence-trade
+' 校易集 CampusSwap · 并发抢单时序图
+' 依据：需求文档 AC-10；《数据库设计说明》3.2.3 抢单并发方案；《核心接口设计说明书》v1.6 接口二
+' 参与者与 07-协作图 保持一致：买家A / 买家B / TradeService / trade表 / product表
+' 写法说明：返回消息统一用 return，由引擎自动画虚线返回箭头并结束激活，排版更稳
+
+skinparam dpi 200
+skinparam defaultFontName "Microsoft YaHei"
+skinparam shadowing false
+skinparam sequence {
+  ArrowColor #17977B
+  ActorBorderColor #17977B
+  LifeLineBorderColor #17977B
+  ParticipantBorderColor #17977B
+  ParticipantBackgroundColor #EAF6F2
+  GroupBorderColor #98A29E
+  GroupBackgroundColor #F7F9F8
+  DividerBackgroundColor #F0F4F2
+  DividerFontColor #5F6B67
+}
+skinparam note {
+  BackgroundColor #FDF3E3
+  BorderColor #E08A1E
+}
+
+title 并发抢单 · 唯一索引兜底（1062 → 409）
+
+autonumber
+
+actor "买家A" as A
+actor "买家B" as B
+participant "TradeService" as S
+database "trade 表" as T
+database "product 表" as P
+
+note over A, B
+  前提：两笔申请几乎同时发出，
+  两次前置校验都会通过。
+  所以唯一性不能靠"先查后改"，
+  只能交给数据库。
+end note
+
+=== 前置校验（两个买家都通过） ===
+
+A -> S: 申请交易(productId=1024)
+activate S
+S -> P: 查商品
+activate P
+return on_sale
+note right: 非本人商品才放行\n（否则 403 CANNOT_BUY_OWN）
+S -> T: 查该买家有无 pending / confirmed 记录
+activate T
+return 无记录
+note right: 有记录则 409 ORDER_DUPLICATED
+
+B -> S: 申请交易(productId=1024)
+S -> P: 查商品
+activate P
+return on_sale（此刻仍是在售）
+S -> T: 查该买家有无记录
+activate T
+return 无记录
+
+=== 落库：唯一索引决定胜负 ===
+
+group 事务① 买家A 先提交
+  S -> T: INSERT trade(status='confirmed')
+  activate T
+  note right
+    trade.confirmed_product_id 是生成列：
+    IF(status='confirmed', product_id, NULL)
+    + UNIQUE KEY uk_confirmed_product
+    ⇒ 一件商品只能有一笔 confirmed
+  end note
+  return OK
+  S -> P: 更新为 reserved
+  activate P
+  return OK
+  S --> A: 200 {tradeId, productStatus:'reserved'}
+else 事务② 买家B 并发提交
+  S -> T: INSERT trade(status='confirmed')
+  activate T
+  return ERROR 1062 唯一键冲突
+  S -> S: rollback()\n商品与 trade 一起回滚
+  S --> B: 409 PRODUCT_LOCKED\n"手慢了，该商品已被预订"
+end
+
+deactivate S
+
+=== 交易结束：商品可再次成交 ===
+
+S -> T: UPDATE trade SET status='completed'
+activate T
+note right
+  status 一旦不是 confirmed，
+  生成列自动回到 NULL，
+  无需额外的解锁定时任务
+end note
+return OK
+S -> P: 更新为 sold
+activate P
+return OK
+
+@enduml
