@@ -1,0 +1,112 @@
+@startuml 00-architecture
+' 校易集 CampusSwap · 系统分层体系结构图（图 2-2）
+' 依据：《系统设计说明书》2.2 系统体系结构、2.3 技术选型
+' 核心结构约束：智能体层与表现层是平级入口，二者调用同一套业务服务，无"智能体直连数据库"旁路
+
+skinparam dpi 200
+skinparam defaultFontName "Microsoft YaHei"
+skinparam shadowing false
+skinparam rectangle {
+  BackgroundColor #FBFDFC
+  BorderColor #98A29E
+  FontColor #1F2933
+}
+skinparam note {
+  BackgroundColor #FDF3E3
+  BorderColor #E08A1E
+  FontColor #5F3F14
+}
+skinparam arrow {
+  Color #2F5D8A
+}
+
+title 校易集 CampusSwap · 分层体系结构（五层）
+
+' ============ 表现层 ============
+rectangle "**表现层**　Presentation" as P #EAF6F2 {
+  rectangle "Web 前端\nVue 3 + TS + Element Plus" as WEB
+  rectangle "微信小程序\n（同一套 API）" as MP
+}
+
+' ============ 接入层 ============
+rectangle "**接入层**　Gateway" as G #DCE9F5 {
+  rectangle "Nginx\nHTTPS 终止 · 静态资源 · /api 反向代理" as NGX
+  rectangle "FastAPI 中间件\n鉴权 · 参数校验 · 统一返回 · 限流" as MW
+}
+
+' ============ 两个平级入口（重点表达平级关系）============
+rectangle "业务入口 A：页面操作" as ENTRY1 #FFFFFF
+rectangle "业务入口 B：自然语言" as ENTRY2 #FFFFFF
+
+' ============ 业务服务层 ============
+rectangle "**业务服务层**　Business Service（11 个模块）" as S #FFFFFF {
+  rectangle "auth\n认证" as M1
+  rectangle "users\n用户" as M2
+  rectangle "campus\n校区" as M3
+  rectangle "products\n商品" as M4
+  rectangle "category\n分类" as M5
+  rectangle "search\n检索" as M6
+  rectangle "chat\n会话" as M7
+  rectangle "privacy\n隐私" as M8
+  rectangle "trades\n交易" as M9
+  rectangle "admin\n后台" as M11
+}
+
+' ============ 智能体层 ============
+rectangle "**智能体层**　Agent" as A #FFF4E0 {
+  rectangle "意图理解\n条件抽取" as A1
+  rectangle "工具编排\n（6 个业务工具）" as A2
+  rectangle "结果解释\n匹配 / 缺失 / 理由" as A3
+  rectangle "agent 模块\n（业务服务层第 11 个模块）" as AG
+}
+
+' ============ 数据层 ============
+rectangle "**数据层**　Data" as D #E8EFE9 {
+  rectangle "MySQL 8.0\n16 张表 · 生成列 + 唯一索引" as DB
+  rectangle "对象存储\n商品图片" as OSS
+}
+
+' ============ 外部依赖 ============
+cloud "大模型 API\n（外部服务）" as LLM #F4F4F4
+
+' ============ 依赖关系 ============
+WEB --> NGX : HTTPS / JSON
+MP --> NGX : HTTPS / JSON
+NGX --> MW
+
+MW --> ENTRY1
+MW --> ENTRY2
+
+ENTRY1 --> S : 页面按钮直接调用
+ENTRY2 --> A : 自然语言
+
+' 智能体层的两个约束
+A --> S : **只通过业务服务层访问数据**
+A2 ..> LLM : 模型调用（超时降级）
+AG ..> S
+
+S --> DB : SQLAlchemy 2.0
+S --> OSS : 图片读写
+
+note right of A
+  **关键结构约束（2.2 节）**
+  智能体层与表现层是**平级**的两个入口，
+  二者调用同一套业务服务。
+  不存在「智能体直连数据库」的旁路——
+  这正是"页面筛选"与"自然语言检索"
+  得到同一份价格、同一套状态的原因。
+end note
+
+note bottom of A2
+  模型只负责"理解需求"与"解释结果"；
+  商品名称、价格、状态由数据库返回，
+  模型不得生成。硬条件由后端 SQL 执行，
+  模型无权放宽（4.4 节工具约定）。
+end note
+
+note bottom of DB
+  并发唯一性由生成列 + 唯一索引在数据库层裁决，
+  应用捕获 1062 转 409，不做"先查后改"。
+end note
+
+@enduml
