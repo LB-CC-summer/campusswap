@@ -1,0 +1,96 @@
+@startuml 05-sequence-agent
+' 校易集 CampusSwap · 智能找物时序图
+' 依据：需求文档 AC-03/04/05/06/08/13；《核心接口设计说明书》v1.6 接口一
+' 参与者：用户 / 前端 / AgentService / 大模型 / 工具层 / MySQL
+title 图 2-5 智能找物时序图（多轮会话、硬条件过滤与模型降级）
+
+skinparam dpi 200
+skinparam defaultFontName "Microsoft YaHei"
+skinparam shadowing false
+skinparam sequence {
+  ArrowColor #17977B
+  ActorBorderColor #17977B
+  LifeLineBorderColor #17977B
+  ParticipantBorderColor #17977B
+  ParticipantBackgroundColor #EAF6F2
+  GroupBorderColor #98A29E
+  GroupBackgroundColor #F7F9F8
+  DividerBackgroundColor #F0F4F2
+  DividerFontColor #5F6B67
+}
+skinparam note {
+  BackgroundColor #FDF3E3
+  BorderColor #E08A1E
+}
+skinparam sequenceMessageAlign center
+skinparam responseMessageBelowArrow true
+skinparam wrapWidth 240
+hide footbox
+autonumber
+
+actor "用户" as U
+participant "前端" as FE
+participant "AgentService" as AS
+participant "大模型" as LLM
+participant "工具层" as TL
+database "MySQL" as DB
+
+== 第一轮：首次请求（sessionId 为空） ==
+U -> FE : “2000 元以内、大学城校区的显示器”
+FE -> AS : POST /api/ai/search\n{ query, sessionId: null }
+AS -> DB : 创建 agent_session\n绑定当前 user_id
+DB --> AS : 返回 sessionId
+AS -> LLM : 第一次调用：解析需求\n并选择工具（携带历史条件）
+alt 模型正常返回
+  LLM --> AS : tool_call: search_products\nconditions {campusId:1,\n priceMax:2000, keyword:"显示器",\n categoryId:null}
+  AS -> AS : 增量合并\n新值覆盖，空值忽略
+  AS -> DB : 保存 agent_session.context
+  AS -> TL : search_products(合并后条件)
+  TL -> DB : SQL 硬条件\nstatus='on_sale'\n+ 校区 + 预算上限 + 分类
+  DB --> TL : 真实在售商品候选
+  TL --> AS : 候选商品列表
+  alt 硬条件无结果
+    AS --> FE : 200 + list=[]\n不自动放宽硬条件
+    FE --> U : 暂无商品\n可调整条件或主动保存求购
+  else 正常命中
+    AS -> LLM : 第二次调用：\n基于候选生成解释
+    LLM --> AS : matchedTags / missingFields\n/ explanation
+    AS -> AS : 校验 productId\n与标签、字段白名单
+    AS --> FE : 200 + conditions + list\n含真实价格、状态、校区
+    FE --> U : 商品卡片 + 推荐理由
+  end
+else 模型超时/失败（降级）
+  AS -> AS : 捕获 Timeout/HTTPError\ndegraded = true
+  AS -> TL : search_products(原句关键词)\n不调用第二次模型
+  TL -> DB : SQL 降级\nstatus='on_sale'\nAND title LIKE '%关键词%'
+  DB --> TL : 降级候选商品
+  TL --> AS : 候选商品列表
+  AS --> FE : 200 + degraded=true\n模板解释，本轮降级条件仅 keyword
+  FE --> U : 降级结果\n提示“智能推荐暂不可用，可重试”
+end
+
+== 第二轮：续聊（回传 sessionId，支撑 AC-04） ==
+U -> FE : “预算降到 200”
+FE -> AS : POST /api/ai/search\n{ query, sessionId: 第一轮返回值 }
+AS -> DB : 按 sessionId 读取 context\n并校验 user_id 归属
+DB --> AS : campusId:1, priceMax:2000,\nkeyword:"显示器"
+AS -> LLM : 第一次调用：解析增量\n并选择工具（带上一轮条件）
+LLM --> AS : tool_call: search_products\n{ priceMax:200, 其余字段 null }
+AS -> AS : 合并：null 视为“未提及”\n只覆盖 priceMax，保留校区/关键词
+AS -> DB : 保存 agent_session.context
+AS -> TL : search_products(合并后条件)
+TL -> DB : SQL 硬条件过滤
+DB --> TL : 候选商品
+TL --> AS : 候选商品列表
+AS -> LLM : 第二次调用：\n生成推荐解释（模型可用时）
+LLM --> AS : matchedTags / explanation
+AS --> FE : 200 + conditions\n{campusId:1, priceMax:200,\n keyword:"显示器"} + list
+FE --> U : 回显“大学城 · 200 元以内 · 显示器”
+
+note over AS, DB
+  模型只负责解析条件、生成解释；
+  预算上限、校区、分类、在售状态
+  一律由后端 SQL 执行，模型无权放宽。
+end note
+
+@enduml
