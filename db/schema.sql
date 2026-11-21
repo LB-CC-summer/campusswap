@@ -87,8 +87,8 @@ CREATE TABLE product (
   description   TEXT          NULL,
   price         DECIMAL(10,2) NOT NULL,
   support_mail  TINYINT(1)    NOT NULL DEFAULT 0 COMMENT '揭阳跨市场景的唯一履约路径',
-  status        ENUM('draft','on_sale','reserved','sold','off_shelf') NOT NULL DEFAULT 'draft'
-                COMMENT 'draft 草稿 / on_sale 在售 / reserved 已预订 / sold 已售出 / off_shelf 已下架',
+  status        ENUM('draft','on_sale','reserved','sold','removed') NOT NULL DEFAULT 'draft'
+                COMMENT 'draft 草稿 / on_sale 在售 / reserved 已预订 / sold 已售出 / removed 已下架',
   attributes    JSON          NULL COMMENT '类目差异属性，如 {"book_name":"高等数学"}',
   view_count    INT UNSIGNED  NOT NULL DEFAULT 0,
   published_at  DATETIME(3)   NULL,
