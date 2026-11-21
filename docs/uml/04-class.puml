@@ -1,0 +1,101 @@
+@startuml 11-class-layer
+' 校易集 CampusSwap · 三层架构系统类图
+' 分层：智能体工具层 → 服务类层 → 实体类层（依赖单向向下）
+skinparam dpi 200
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam roundcorner 6
+skinparam classFontSize 15
+skinparam classAttributeFontSize 13
+skinparam nodesep 50
+skinparam ranksep 55
+skinparam ArrowColor #4A6FA5
+skinparam ClassBorderColor #33507A
+skinparam ClassBackgroundColor #F6F9FD
+hide empty members
+
+title 校易集 CampusSwap · 三层架构系统类图
+
+package "智能体工具层（Tool Layer）" #EAF3F8 {
+  class "SearchTool（搜索工具）" as SearchTool {
+    +search(conditions: dict) : list
+    +degradeToLike(keyword) : list
+  }
+  class "DetailTool（详情工具）" as DetailTool {
+    +getDetail(productId: int) : dict
+    +compare(productIds: list) : dict
+  }
+}
+
+package "服务类层（Service Layer）" #FDEEEE {
+  class "ProductService（商品服务）" as ProductService {
+    +publish(product) : Product
+    +reserve(productId) : void
+    +markSold(productId) : void
+  }
+  class "TradeService（交易服务）" as TradeService {
+    +apply(productId, buyerId) : Trade
+    +accept(tradeId, sellerId) : Trade
+    +complete(tradeId) : void
+  }
+}
+
+package "实体类层（Entity Layer）" #EEF5EA {
+  class "User（用户）" as User {
+    +id: BigInteger
+    +campusId: BigInteger
+    +role: Enum
+    +status: Enum
+  }
+  class "Product（商品）" as Product {
+    +id: BigInteger
+    +sellerId: BigInteger
+    +price: Decimal
+    +status: Enum
+    -setStatus(s) : void
+  }
+  class "Trade（交易记录）" as Trade {
+    +id: BigInteger
+    +productId: BigInteger
+    +buyerId: BigInteger
+    +status: Enum
+  }
+  class "Message（消息）" as Message {
+    +id: BigInteger
+    +senderId: BigInteger
+    +content: String
+    +createdAt: DateTime
+  }
+}
+
+' ---------- 服务类依赖实体类 ----------
+ProductService ..> Product : 读 / 改状态
+ProductService ..> User : 校验身份
+ProductService ..> Message : 写入系统通知
+TradeService ..> Trade : 写入交易
+TradeService ..> Product : 锁定 / 释放
+TradeService ..> User : 校验买卖双方
+
+' ---------- 智能体工具层依赖服务类 ----------
+SearchTool ..> ProductService : 只读查询
+DetailTool ..> ProductService : 只读查询
+DetailTool ..> TradeService : 查成交价
+
+note right of ProductService
+  状态只能由服务类修改。
+end note
+
+note right of TradeService
+  状态只能由服务类修改。
+end note
+
+legend right
+  分层约束
+  1. 依赖方向唯一：工具层 → 服务类层 → 实体类层，不出现反向箭头
+  2. 跨层调用禁止：工具层只调服务类，不直接操作实体类
+  3. 状态收口：product.status 与 trade.status 只允许在服务类中写入
+  4. 工具层只读：不持有数据库事务，不改任何状态
+endlegend
+
+@enduml
