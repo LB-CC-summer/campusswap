@@ -1,0 +1,78 @@
+@startmindmap
+title 校易集 CampusSwap 功能模块结构
+scale 1.6
+
+<style>
+mindmapDiagram {
+  node {
+    Padding 12
+    Margin 6
+    RoundCorner 6
+    FontSize 20
+  }
+  rootNode {
+    BackgroundColor #2F5D8A
+    FontColor #FFFFFF
+    FontSize 24
+    RoundCorner 10
+  }
+  :depth(1) {
+    BackgroundColor #4A7BA6
+    FontColor #FFFFFF
+    FontSize 22
+  }
+  :depth(2) {
+    BackgroundColor #BBD3E6
+    FontColor #1F2933
+    FontSize 19
+  }
+  :depth(3) {
+    BackgroundColor #F2F6FA
+    FontColor #1F2933
+    FontSize 20
+  }
+}
+</style>
+
+* 校易集\nCampusSwap
+
+left side
+
+** 前端页面（11）
+*** 登录注册
+*** 集市首页
+*** 智能找物
+*** 商品详情
+*** 发布商品
+*** 商品对比
+*** 消息中心
+*** 交易中心
+*** 个人中心
+*** 管理后台
+*** 安全提示
+
+** 数据与依赖
+*** MySQL 8.0
+*** 对象存储
+*** 大模型 API
+
+right side
+
+** 后端模块（11）
+*** 账号与身份
+**** auth 认证
+**** users 用户
+**** campus 校区
+*** 商品与检索
+**** products 商品
+**** category 分类
+**** search 检索
+*** 沟通与交易
+**** chat 会话
+**** privacy 隐私
+**** trades 交易
+*** 智能与管理
+**** agent 智能体
+**** admin 后台
+
+@endmindmap
