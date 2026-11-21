@@ -1,0 +1,59 @@
+@startuml 12-communication-trade
+' 校易集 CampusSwap · 并发抢单协作图（Communication Diagram）
+' 对象恰好 5 个：买家A / 买家B / TradeService / trade表 / product表
+skinparam dpi 240
+skinparam defaultFontName "Noto Sans CJK SC"
+skinparam shadowing false
+skinparam roundcorner 6
+skinparam objectFontSize 15
+skinparam ArrowFontSize 13
+skinparam nodesep 65
+skinparam ranksep 55
+skinparam linetype polyline
+skinparam ArrowColor #4A6FA5
+skinparam objectBorderColor #33507A
+skinparam objectBackgroundColor #F6F9FD
+hide footbox
+
+title 校易集 CampusSwap · 并发抢单协作图（先到先得）
+
+object "买家A\n:Buyer" as A
+object "买家B\n:Buyer" as B
+object "TradeService\n:服务层" as S
+object "trade 表\n: trade" as T
+object "product 表\n: product" as P
+
+' ---------- 1. 两个请求几乎同时到达 ----------
+A --> S : 1a apply(1001)
+B --> S : 1b apply(1001)
+
+' ---------- 2. 服务层尝试落库 ----------
+S --> T : 2a INSERT confirmed(A)
+S --> T : 2b INSERT confirmed(B)
+
+' ---------- 3. 表内唯一索引并发校验 ----------
+T --> T : 3 生成列占坑\nuk 唯一校验
+
+' ---------- 4. 数据库回结果 ----------
+T --> S : 4a 影响 1 行\n（A 先到）
+T --> S : 4b 1062\n（B 撞索引）
+
+' ---------- 5-6. 服务层后续动作 ----------
+S --> P : 5 置 reserved\n（仅 A）
+S --> S : 6 捕获 1062\n回滚（B）
+
+' ---------- 7. 分别应答 ----------
+S --> A : 7a 200 成功
+S --> B : 7b 409 被抢
+
+note right of T
+  先到先得：两条 2a/2b 只有一条能落库。
+  唯一索引是裁判，不靠应用层判断先后。
+end note
+
+note right of P
+  B 的 1062 被捕获后回滚，
+  商品状态只在 A 的事务里被改写。
+end note
+
+@enduml
