@@ -1,4 +1,4 @@
-@startuml 11-class-layer
+@startuml 04-class
 ' 校易集 CampusSwap · 三层架构系统类图
 ' 分层：智能体工具层 → 服务类层 → 实体类层（依赖单向向下）
 skinparam dpi 200
@@ -36,8 +36,8 @@ package "服务类层（Service Layer）" #FDEEEE {
   }
   class "TradeService（交易服务）" as TradeService {
     +apply(productId, buyerId) : Trade
-    +accept(tradeId, sellerId) : Trade
     +complete(tradeId) : void
+    +cancel(tradeId) : void
   }
 }
 
@@ -90,12 +90,18 @@ note right of TradeService
   状态只能由服务类修改。
 end note
 
+note bottom of Trade
+  本图只画分层骨架的 4 个核心实体；
+  完整 16 类域模型与 17 张表见《02-数据库设计说明书》与 10-er 图。
+end note
+
 legend right
   分层约束
   1. 依赖方向唯一：工具层 → 服务类层 → 实体类层，不出现反向箭头
   2. 跨层调用禁止：工具层只调服务类，不直接操作实体类
   3. 状态收口：product.status 与 trade.status 只允许在服务类中写入
-  4. 工具层只读：不持有数据库事务，不改任何状态
+  4. 无卖家接受环节：交易为买家申请即锁定（先到先得）
+  5. 工具层只读：不持有数据库事务，不改任何状态
 endlegend
 
 @enduml

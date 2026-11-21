@@ -1,7 +1,7 @@
-@startuml 13-state-product-trade
+@startuml 08-state-product-trade
 ' 校易集 CampusSwap · 商品 / 交易 双状态机
 ' 说明：pending 与 rejected 为保留状态，本期不产生实际流转
-skinparam dpi 220
+skinparam dpi 235
 skinparam defaultFontName "Noto Sans CJK SC"
 skinparam shadowing false
 skinparam roundcorner 8
@@ -18,9 +18,9 @@ state "商品状态机  Product.status" as PS #FCF6E8 {
   draft --> on_sale : 发布 / [必填项齐全]
   on_sale --> reserved : 交易确认，商品被锁定
   reserved --> sold : 线下交付完成
-  reserved --> off_shelf : 卖家下架 / 管理员下架
+  reserved --> removed : 卖家下架 / 管理员下架
   sold --> [*]
-  off_shelf --> [*]
+  removed --> [*]
 }
 
 state "交易状态机  Trade.status" as TS #FDEEEE {
@@ -39,7 +39,7 @@ state "保留状态（本期不流转）" as Reserved #F2F2F2 {
 }
 
 PS -[hidden]down-> TS
-TS -[hidden]right-> Reserved
+TS -[hidden]down-> Reserved
 
 note right of PS
   reserved 是唯一「占坑」态：
