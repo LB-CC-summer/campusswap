@@ -1,6 +1,8 @@
-@startuml 13-state-product-trade
+@startuml 08-state-product-trade
 ' 校易集 CampusSwap · 商品 / 交易 双状态机
 ' 说明：pending 与 rejected 为保留状态，本期不产生实际流转
+' 枚举口径：商品 removed / 交易 confirmed-completed-cancelled-aborted，
+'           与《02-数据库设计说明书》4.5 / 4.12 及 db/schema.sql 完全一致
 skinparam dpi 220
 skinparam defaultFontName "Noto Sans CJK SC"
 skinparam shadowing false
@@ -16,18 +18,19 @@ title 校易集 CampusSwap · 商品与交易状态机
 state "商品状态机  Product.status" as PS #FCF6E8 {
   [*] --> draft : 卖家创建草稿
   draft --> on_sale : 发布 / [必填项齐全]
-  on_sale --> reserved : 交易确认，商品被锁定
+  on_sale --> reserved : 买家抢单，商品被锁定
+  on_sale --> removed : 卖家下架 / 管理员下架
   reserved --> sold : 线下交付完成
-  reserved --> off_shelf : 卖家下架 / 管理员下架
+  reserved --> removed : 管理员强制下架 / [卖家须先取消交易]
   sold --> [*]
-  off_shelf --> [*]
+  removed --> [*]
 }
 
 state "交易状态机  Trade.status" as TS #FDEEEE {
-  [*] --> confirmed : 买家申请即锁定
+  [*] --> confirmed : 买家下单即锁定
   confirmed --> completed : 线下交付完成
   confirmed --> cancelled : 双方协商取消
-  confirmed --> aborted : 一方账号被禁用
+  confirmed --> aborted : 系统中止
   completed --> [*]
   cancelled --> [*]
   aborted --> [*]
@@ -43,8 +46,10 @@ TS -[hidden]right-> Reserved
 
 note right of PS
   reserved 是唯一「占坑」态：
-  商品被某笔交易锁定，
-  集市不可见、不可再被申请。
+  商品被某笔交易锁定，不可再被抢单。
+  集市列表仍返回该商品但置灰，
+  智能检索不返回（只查 on_sale）。
+  卖家不能直接下架，须先取消交易。
 end note
 
 note bottom of Reserved
@@ -56,7 +61,8 @@ note bottom of Reserved
 end note
 
 note right of TS
-  aborted 由系统触发（AC-20），
+  aborted 由系统或管理员触发
+  （账号被禁用、超期未交接、违规判定），
   非买卖双方主动操作。
 end note
 
