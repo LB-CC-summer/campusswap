@@ -1,0 +1,78 @@
+@startuml 02-activity-search
+' 校易集 CampusSwap · 智能找物活动图
+' 依据：需求文档 7.5 / AC-03~AC-06 / AC-13；《核心接口设计说明书》v1.6 接口一
+' 说明：purpose（用途）只参与排序加权与解释文案，不进入 SQL 过滤条件
+
+skinparam dpi 200
+skinparam defaultFontName "Microsoft YaHei"
+skinparam shadowing false
+skinparam activity {
+  BackgroundColor #EAF6F2
+  BorderColor #17977B
+  FontColor #1A1D1C
+  DiamondBackgroundColor #FFFFFF
+  DiamondBorderColor #17977B
+}
+skinparam note {
+  BackgroundColor #FDF3E3
+  BorderColor #E08A1E
+}
+
+title 智能找物 · 主流程（含四条分支）
+
+start
+
+:用户在首页/找物页输入自然语言\n例："300 以内大学城的显示器，宿舍编程用";
+:前端 POST /api/ai/search\n首次不带 sessionId;
+
+fork
+  :调用大模型解析意图;
+fork again
+  :读取该 sessionId 的历史条件\n（首次为空）;
+end fork
+
+if (模型 5 秒内正常返回?) then (是)
+  :抽取结构化条件\ncampusId / priceMax / keyword / purpose;
+  :字段白名单校验\n① 校区必须能在 campus 表命中（is_enabled=1）\n② priceMax 非数字则置 null\n③ 校验失败的字段直接丢弃;
+  :与历史条件合并\n（"再便宜点" → 只改 priceMax，其余保留）;
+  :degraded = false;
+else (否 / 超时 / 上游 502)
+  :<b>降级</b>：仅用 keyword 做 LIKE 查询\n（保留校区硬条件）;
+  :degraded = true;
+  note right
+    AC-13：降级是"仍返回结果"，
+    不是报错；只有降级查询
+    本身也失败才返回 500。
+  end note
+endif
+
+if (合并后条件是否足够?) then (不足，如没给校区或预算)
+  :返回 200，list = []\nconditions 给出已识别的部分;
+  :前端追问补充\n例："你想在哪个校区找？";
+  stop
+else (足够)
+  :按硬条件查 product 表\nstatus = 'on_sale'\nAND campus_id = ?
+AND price <= price_max;
+  note right
+    AC-05：硬条件只由后端 SQL 执行，
+    模型无权放宽；purpose 不参与过滤。
+  end note
+endif
+
+if (是否命中商品?) then (否)
+  :返回 200，list = []，保留全部条件;
+  :前端给出三条出口\n① 改为不限校区 ② 放宽预算 ③ 保存求购;
+  note right
+    AC-05：不得用其他商品"凑数"，
+    也不自动放宽硬条件。
+  end note
+  stop
+else (是)
+  :为每条结果生成可解释信息\nmatchedTags：符合什么（预算/校区/关键词）\nmissingFields：缺什么（成色/接口/实拍图）\nexplanation：一句话推荐理由（≤60 字）;
+  :返回 200\ndata{ sessionId, conditions, degraded, list[] };
+  :前端渲染推荐卡片\n绿标签=符合、橙标签=未填写;
+  :用户点卡片 → 商品详情;
+  stop
+endif
+
+@enduml

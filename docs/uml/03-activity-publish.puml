@@ -1,0 +1,79 @@
+@startuml 03-activity-publish
+' 校易集 CampusSwap · 智能发布活动图
+' 依据：需求文档 7.4 / AC-01 / AC-07 / AC-18；《核心接口设计说明书》v1.6
+' 要点：AI 只产出"草稿"，不直接上架；必须由卖家确认后才 on_sale
+
+skinparam dpi 200
+skinparam defaultFontName "Microsoft YaHei"
+skinparam shadowing false
+skinparam activity {
+  BackgroundColor #EAF6F2
+  BorderColor #17977B
+  FontColor #1A1D1C
+  DiamondBackgroundColor #FFFFFF
+  DiamondBorderColor #17977B
+}
+skinparam note {
+  BackgroundColor #FDF3E3
+  BorderColor #E08A1E
+}
+
+title 智能发布 · 主流程（拍照 + 一句话 → 草稿 → 确认上架）
+
+start
+
+:卖家进入「发布闲置」;
+:上传图片（1~9 张）;
+:一句话描述\n例："毕业出台灯 25 块，东风路校区自取";
+:前端 POST /api/listing-drafts;
+
+:Agent 聚合图文信息进行抽取\n标题 / 价格 / 校区 / 履约方式 / 类目 / 属性;
+
+if (关键字段有缺失?) then (有)
+  :返回 missingFields + followUpQuestions;
+  :前端追问（最多 3 个问题，不轰炸）\n"能正常使用吗？" "带电源线吗？" "有明显损坏吗？";
+  :卖家回答，合并进草稿;
+  note right
+    AC-07：缺什么要明说，
+    不允许 AI 自己编造成色、型号。
+  end note
+  :重新生成草稿;
+else (无)
+  :直接生成草稿;
+endif
+
+:写入 product（status = 'draft'）\n+ product_image;
+:返回草稿（可编辑）;
+note right
+  草稿商家可见、前台不可见：
+  列表接口固定返回 on_sale，
+  详情接口对非本人的 draft 返回 404。
+end note
+
+:前端展示\n明显提示「草稿已生成，<b>还没有发布</b>」\n+ 追问记录 + 预填表单;
+
+if (卖家操作?) then (继续修改)
+  :编辑标题 / 价格 / 描述 / 属性;
+  :回到草稿预览;
+elseif (放弃)
+  :草稿保留或删除\n（不进入前台）;
+  stop
+else (确认发布)
+  :校验必填项\n标题、价格、校区、履约方式、至少 1 张图;
+  if (校验通过?) then (否)
+    :高亮缺失项 + 返回 422 INVALID_PARAM;
+    :回到草稿预览;
+  else (是)
+    :PATCH /api/products/{id}\nstatus: draft → on_sale\npublished_at = NOW();
+    :若校区跨市（is_cross_city = 1）\n必须 supportMail = true;
+    note right
+      AC-18：跨市商品只能邮寄，
+      发布时强制要求支持邮寄。
+    end note
+    :返回 200，前台列表/搜索可见;
+    :跳转「我的发布 · 在售」;
+    stop
+  endif
+endif
+
+@enduml
