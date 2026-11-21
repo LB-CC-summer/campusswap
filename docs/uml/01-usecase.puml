@@ -1,0 +1,110 @@
+@startuml 01-usecase
+' 校易集 CampusSwap · 系统用例图（图 2-1）
+' 依据：《系统设计说明书》2.1 功能范围、7.1 权限矩阵、4.4 智能体工具约定
+' 参与者：游客 / 学生用户 / 管理员（人员）+ 智能体服务（外部系统）
+' 布局策略：按参与者分包，每个包内用例纵向排列，避免长曲线绕行
+
+skinparam dpi 200
+skinparam defaultFontName "Microsoft YaHei"
+skinparam shadowing false
+skinparam nodesep 30
+skinparam ranksep 45
+skinparam usecase {
+  BackgroundColor #EAF6F2
+  BorderColor #17977B
+  FontColor #1A1D1C
+  ArrowColor #17977B
+}
+skinparam actor {
+  BackgroundColor #FFFFFF
+  BorderColor #2F5D8A
+  FontColor #1F2933
+}
+skinparam package {
+  BackgroundColor #FBFDFC
+  BorderColor #98A29E
+  FontColor #1F2933
+}
+skinparam note {
+  BackgroundColor #FDF3E3
+  BorderColor #E08A1E
+  FontColor #5F3F14
+}
+
+title 校易集 CampusSwap · 系统用例图
+
+actor "游客" as Guest
+actor "学生用户\n（买 / 卖同一账号）" as Student
+actor "管理员" as Admin
+actor "智能体服务\n（外部系统）" as Agent <<外部系统>>
+
+rectangle "校易集 CampusSwap" {
+
+  package "公共" as PKG0 {
+    usecase "浏览集市" as UC1
+    usecase "查看商品详情" as UC2
+    usecase "注册 / 登录" as UC3
+  }
+
+  package "商品与交易" as PKG1 {
+    usecase "校内身份认证" as UC4
+    usecase "发布商品" as UC5
+    usecase "商品对比" as UC6
+    usecase "收藏商品" as UC7
+    usecase "申请交易" as UC8
+    usecase "确认完成" as UC9
+    usecase "个人中心" as UC10
+  }
+
+  package "沟通与隐私" as PKG2 {
+    usecase "站内咨询" as UC11
+    usecase "联系方式交换" as UC12
+    usecase "拉黑 / 举报" as UC13
+  }
+
+  package "智能体" as PKG3 {
+    usecase "智能找物" as UC14
+    usecase "智能发布" as UC15
+  }
+
+  package "后台管理" as PKG4 {
+    usecase "校区管理" as UC19
+    usecase "商品下架" as UC20
+    usecase "用户管理" as UC21
+    usecase "处理举报" as UC22
+    usecase "申请查看聊天" as UC23
+  }
+}
+
+Guest --> UC1
+Guest --> UC2
+Guest --> UC3
+
+Student --> UC4
+Student --> UC5
+Student --> UC6
+Student --> UC7
+Student --> UC8
+Student --> UC9
+Student --> UC10
+Student --> UC11
+Student --> UC13
+Student --> UC14
+Student --> UC15
+
+Admin --> UC19
+Admin --> UC20
+Admin --> UC21
+Admin --> UC22
+
+UC3 ..> UC4 : <<include>>
+UC8 ..> UC2
+UC8 ..> UC9 : <<include>>
+UC11 ..> UC2 : <<extend>>
+UC11 <.. UC12 : <<extend>>
+UC22 <.. UC23 : <<extend>>
+
+Agent --> UC14
+Agent --> UC15
+
+@enduml

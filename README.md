@@ -70,6 +70,108 @@
 
 ---
 
+## 本地运行与部署
+
+本章节面向想在自己机器上跑起来的人，以及负责部署的成员。部署图见 [`docs/uml/09-deployment.png`](docs/uml/09-deployment.png)。
+
+### 环境要求
+
+| 组件 | 版本 | 说明 |
+|---|---|---|
+| Python | 3.10+ | 后端运行环境 |
+| MySQL | 8.0.16+ | 低于此版本不支持生成列上的函数索引 |
+| Node.js | 18+ | 仅前端需要 |
+| Docker + Docker Compose | 20.10+ / v2 | 生产部署方式 |
+| Git | 2.30+ | — |
+
+### 配置项
+
+所有配置通过环境变量注入，**`.env` 文件不入版本库**。仓库提供 `.env.example` 作为模板，复制为 `.env` 后填写：
+
+| 变量 | 必填 | 说明 |
+|---|---|---|
+| `APP_ENV` | 是 | `dev` / `prod` |
+| `APP_PORT` | 否 | 默认 8080 |
+| `DB_HOST` | 是 | 开发期为 `127.0.0.1`，容器内为 `mysql` |
+| `DB_PORT` | 否 | 默认 3306 |
+| `DB_NAME` | 是 | 数据库名 |
+| `DB_USER` | 是 | 应用账号，只授予 DML 权限 |
+| `DB_PASSWORD` | 是 | 数据库口令 |
+| `JWT_SECRET` | 是 | 登录令牌签名密钥，随机 32 字节以上 |
+| `PHONE_AES_KEY` | 是 | 手机号字段的 AES-GCM 密钥，32 字节 base64 |
+| `LLM_API_BASE` | 是 | 大模型服务地址 |
+| `LLM_API_KEY` | 是 | 大模型服务密钥 |
+| `LLM_TIMEOUT` | 否 | 默认 5 秒，超时触发关键词降级 |
+| `OSS_ENDPOINT` / `OSS_BUCKET` | 否 | 不填则图片落本地目录 |
+
+生成密钥的参考命令：
+
+```bash
+python -c "import os,base64;print(base64.b64encode(os.urandom(32)).decode())"
+```
+
+### 开发环境启动
+
+```bash
+# 1. 安装依赖
+pip install -r requirements.txt
+
+# 2. 准备数据库
+mysql -u root -p -e "CREATE DATABASE campusswap DEFAULT CHARSET utf8mb4;"
+
+# 3. 建表与种子数据
+python -m app.db.init_db
+python -m app.db.seed          # 校区 5 条、分类、演示商品
+
+# 4. 启动后端
+uvicorn app.main:app --reload --port 8080
+
+# 5. 前端（另开一个终端）
+cd web && npm install && npm run dev
+```
+
+启动后：接口文档 <http://localhost:8080/docs>，前端 <http://localhost:5173>。
+
+### 生产部署（Docker Compose）
+
+```bash
+# 1. 准备环境变量
+cp .env.example .env
+vim .env                       # 填入真实口令与密钥
+
+# 2. 启动
+docker compose up -d --build
+
+# 3. 建表（首次）
+docker compose exec app python -m app.db.init_db
+
+# 4. 查看状态与日志
+docker compose ps
+docker compose logs -f app
+```
+
+Compose 编排三个容器：`nginx`（对外 443）、`app`（FastAPI，仅内网）、`mysql`（仅内网）。
+
+### 部署约定
+
+1. **仅 `nginx` 容器映射端口到宿主机**，`app` 与 `mysql` 不映射，避免绕过反向代理直连。
+2. **`mysql` 不对公网开放**，数据库账号按最小权限分配：应用账号只有 DML 权限，建表由迁移脚本以管理员账号执行。
+3. **`app` 容器不加 `--workers`**。会话上下文与限流计数若采用内存态，多 worker 会导致各进程状态不一致；本期已改用数据库表承载，但仍保持单进程以简化排查。
+4. **密钥与口令只走环境变量**，`.env` 已在 `.gitignore` 中排除。
+5. **开发与生产同一套 Compose 配置**，差异全部收敛到环境变量，避免"本地能跑、线上不能跑"。
+6. **图片存储可切换**：开发期落本地卷，生产期配置 `OSS_*` 后自动切换，业务代码无需改动。
+
+### 常见问题
+
+| 现象 | 原因 | 处理 |
+|---|---|---|
+| 建表报 `1064` | MySQL 版本低于 8.0.16，不支持生成列函数索引 | 升级 MySQL |
+| 接口返回 502 / 504 | 大模型超时 | 检查 `LLM_TIMEOUT`；系统会自动降级为关键词查询 |
+| 静态资源 404 | nginx 未挂载前端产物目录 | 检查 compose 中的 volume 映射 |
+| 中文乱码 | 数据库或连接未指定 utf8mb4 | 建库时指定 `DEFAULT CHARSET utf8mb4` |
+
+---
+
 ## 仓库结构
 
 ```

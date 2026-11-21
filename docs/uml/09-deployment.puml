@@ -1,0 +1,104 @@
+@startuml 09-deployment
+' 校易集 CampusSwap · 部署架构图（图 2-3）
+' 依据：《系统设计说明书》2.4 部署视图
+' 单台云服务器 + Docker Compose 三容器；对象存储与大模型服务为外部依赖节点
+
+skinparam dpi 200
+skinparam defaultFontName "Microsoft YaHei"
+skinparam shadowing false
+skinparam node {
+  BackgroundColor #FBFDFC
+  BorderColor #98A29E
+  FontColor #1F2933
+}
+skinparam component {
+  BackgroundColor #EAF6F2
+  BorderColor #17977B
+  FontColor #1A1D1C
+}
+skinparam database {
+  BackgroundColor #E8EFE9
+  BorderColor #4A7BA6
+  FontColor #1F2933
+}
+skinparam cloud {
+  BackgroundColor #F4F4F4
+  BorderColor #98A29E
+  FontColor #1F2933
+}
+skinparam note {
+  BackgroundColor #FDF3E3
+  BorderColor #E08A1E
+  FontColor #5F3F14
+}
+skinparam arrow {
+  Color #2F5D8A
+}
+
+title 校易集 CampusSwap · 部署架构（单机 + Docker Compose 三容器）
+
+' ============ 客户端 ============
+node "用户侧" as Client #FFFFFF {
+  component "浏览器\n（Web 前端）" as B1
+  component "微信小程序" as B2
+}
+
+' ============ 云服务器 ============
+node "云服务器（Linux）" as Server #F7F9F8 {
+
+  node "Docker Compose 编排" as Compose #FFFFFF {
+
+    component "**nginx 容器**\n:443 对外\nHTTPS 终止 / 静态资源 / /api 反代" as NGX #DCE9F5
+
+    component "**app 容器**\nFastAPI + uvicorn\n仅内网，不暴露端口" as APP #EAF6F2
+
+    database "**mysql 容器**\nMySQL 8.0\n仅内网监听" as DB #E8EFE9
+
+    component "**卷 volume**\n图片本地目录\nMySQL 数据目录" as VOL #F4F4F4
+  }
+
+  note bottom of APP
+    **单进程要求（重要）**
+    会话上下文与限流计数若采用内存态，
+    必须单进程运行，不能加 --workers 4。
+    多 worker 会导致会话与计数各算各的。
+    → 本期采用数据库表承载，规避该限制。
+  end note
+}
+
+' ============ 外部依赖 ============
+cloud "对象存储\n（S3 兼容）" as OSS #F4F4F4
+cloud "大模型 API\n（外部服务）" as LLM #F4F4F4
+
+' ============ 关系 ============
+B1 --> NGX : HTTPS :443
+B2 --> NGX : HTTPS :443
+NGX --> APP : HTTP 内网\n/api 反代
+APP --> DB : MySQL 协议\n仅容器内网
+APP --> VOL : 读写图片
+APP --> OSS : 图片对象读写\n（生产环境）
+APP ..> LLM : HTTPS\n超时 / 异常时降级
+DB --> VOL : 数据目录挂载
+
+note right of NGX
+  **网络边界（2.4 部署要点）**
+  1. 仅 nginx 对外暴露 443
+  2. app 容器不映射端口
+  3. mysql 不对公网开放
+  4. 密钥与口令走环境变量，
+     .env 不入版本库
+end note
+
+note bottom of OSS
+  开发期图片存本地目录（volume），
+  部署期切换对象存储；
+  两者共用同一套接口，仅配置不同。
+end note
+
+note bottom of DB
+  数据库账号按最小权限分配：
+  应用账号只有 DML 权限，
+  无 DDL 权限；建表由迁移脚本执行。
+end note
+
+@enduml
