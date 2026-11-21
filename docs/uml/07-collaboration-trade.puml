@@ -1,4 +1,4 @@
-@startuml 12-communication-trade
+@startuml 07-collaboration-trade
 ' 校易集 CampusSwap · 并发抢单协作图（Communication Diagram）
 ' 对象恰好 5 个：买家A / 买家B / TradeService / trade表 / product表
 skinparam dpi 240
@@ -35,7 +35,7 @@ S --> T : 2b INSERT confirmed(B)
 T --> T : 3 生成列占坑\nuk 唯一校验
 
 ' ---------- 4. 数据库回结果 ----------
-T --> S : 4a 影响 1 行\n（A 先到）
+T --> S : 4a 插入成功 1 行\n（A 先提交）
 T --> S : 4b 1062\n（B 撞索引）
 
 ' ---------- 5-6. 服务层后续动作 ----------
@@ -44,7 +44,7 @@ S --> S : 6 捕获 1062\n回滚（B）
 
 ' ---------- 7. 分别应答 ----------
 S --> A : 7a 200 成功
-S --> B : 7b 409 被抢
+S --> B : 7b 409 PRODUCT_LOCKED
 
 note right of T
   先到先得：两条 2a/2b 只有一条能落库。

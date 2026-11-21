@@ -1,7 +1,7 @@
-@startuml 13-state-product-trade
+@startuml 08-state-product-trade
 ' 校易集 CampusSwap · 商品 / 交易 双状态机
 ' 说明：pending 与 rejected 为保留状态，本期不产生实际流转
-skinparam dpi 220
+skinparam dpi 235
 skinparam defaultFontName "Noto Sans CJK SC"
 skinparam shadowing false
 skinparam roundcorner 8
@@ -18,16 +18,16 @@ state "商品状态机  Product.status" as PS #FCF6E8 {
   draft --> on_sale : 发布 / [必填项齐全]
   on_sale --> reserved : 交易确认，商品被锁定
   reserved --> sold : 线下交付完成
-  reserved --> off_shelf : 卖家下架 / 管理员下架
+  reserved --> removed : 管理员强制下架 / [须先了结交易]
   sold --> [*]
-  off_shelf --> [*]
+  removed --> [*]
 }
 
 state "交易状态机  Trade.status" as TS #FDEEEE {
   [*] --> confirmed : 买家申请即锁定
   confirmed --> completed : 线下交付完成
   confirmed --> cancelled : 双方协商取消
-  confirmed --> aborted : 一方账号被禁用
+  confirmed --> aborted : 账号禁用 / 超期未交接 / 违规
   completed --> [*]
   cancelled --> [*]
   aborted --> [*]
@@ -39,12 +39,13 @@ state "保留状态（本期不流转）" as Reserved #F2F2F2 {
 }
 
 PS -[hidden]down-> TS
-TS -[hidden]right-> Reserved
+TS -[hidden]down-> Reserved
 
 note right of PS
   reserved 是唯一「占坑」态：
   商品被某笔交易锁定，
-  集市不可见、不可再被申请。
+  集市列表置灰、不可再被申请，
+  智能检索结果中不出现。
 end note
 
 note bottom of Reserved
@@ -56,8 +57,9 @@ note bottom of Reserved
 end note
 
 note right of TS
-  aborted 由系统触发（AC-20），
-  非买卖双方主动操作。
+  aborted 由系统或管理员触发，
+  非买卖双方主动操作：
+  账号禁用、超期未交接、成交后违规。
 end note
 
 @enduml

@@ -1,4 +1,4 @@
-@startuml 11-class-layer
+@startuml 04-class
 ' 校易集 CampusSwap · 三层架构系统类图
 ' 分层：智能体工具层 → 服务类层 → 实体类层（依赖单向向下）
 skinparam dpi 200
@@ -18,6 +18,9 @@ hide empty members
 title 校易集 CampusSwap · 三层架构系统类图
 
 package "智能体工具层（Tool Layer）" #EAF3F8 {
+  class "AgentToolGateway（工具网关）" as Gateway {
+    +dispatch(toolName: str, args: dict) : dict
+  }
   class "SearchTool（搜索工具）" as SearchTool {
     +search(conditions: dict) : list
     +degradeToLike(keyword) : list
@@ -36,8 +39,13 @@ package "服务类层（Service Layer）" #FDEEEE {
   }
   class "TradeService（交易服务）" as TradeService {
     +apply(productId, buyerId) : Trade
-    +accept(tradeId, sellerId) : Trade
     +complete(tradeId) : void
+    +cancel(tradeId) : void
+  }
+  class "PrivacyService（隐私服务）" as PrivacyService {
+    +mask(content) : String
+    +grantAccess(reportId, reason) : Grant
+    +decryptPhone(userId) : String
   }
 }
 
@@ -76,11 +84,16 @@ ProductService ..> Message : 写入系统通知
 TradeService ..> Trade : 写入交易
 TradeService ..> Product : 锁定 / 释放
 TradeService ..> User : 校验买卖双方
+PrivacyService ..> Message : 打码后写入
+PrivacyService ..> User : 校验授权范围
 
 ' ---------- 智能体工具层依赖服务类 ----------
+Gateway ..> SearchTool : 转发工具调用
+Gateway ..> DetailTool : 转发工具调用
+Gateway ..> TradeService : 下单 / 成交查询
+Gateway ..> PrivacyService : 交换与授权
 SearchTool ..> ProductService : 只读查询
 DetailTool ..> ProductService : 只读查询
-DetailTool ..> TradeService : 查成交价
 
 note right of ProductService
   状态只能由服务类修改。
@@ -90,12 +103,19 @@ note right of TradeService
   状态只能由服务类修改。
 end note
 
+note bottom of Trade
+  本图只画分层骨架的 4 个核心实体；
+  完整的实体关系与 16 张表见《02-数据库设计说明书》。
+end note
+
 legend right
   分层约束
   1. 依赖方向唯一：工具层 → 服务类层 → 实体类层，不出现反向箭头
   2. 跨层调用禁止：工具层只调服务类，不直接操作实体类
   3. 状态收口：product.status 与 trade.status 只允许在服务类中写入
-  4. 工具层只读：不持有数据库事务，不改任何状态
+  4. 无卖家接受环节：交易为买家申请即锁定（先到先得）
+  5. 工具层只读：不持有数据库事务，不改任何状态
+  6. 网关不含业务：AgentToolGateway 只做参数翻译与转发
 endlegend
 
 @enduml
