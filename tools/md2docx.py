@@ -121,27 +121,52 @@ def _fmt(p, size=BODY_SIZE, line=1.5, indent_chars=2, align=None,
 
 INLINE_RE = re.compile(r"(\*\*.+?\*\*|`[^`]+`|\[[^\]]*\]\([^)]*\))")
 
+# 先保护行内代码，避免 `**` 粗体规则把其中的代码一并吞掉（如 **`status`**）
+CODE_SPAN_RE = re.compile(r"`([^`]+)`")
+PH_OPEN, PH_CLOSE = "\ue000", "\ue001"
+PH_RE = re.compile(PH_OPEN + r"(\d+)" + PH_CLOSE)
+
 
 def _add_inline(p, text, size=BODY_SIZE, base_bold=False):
-    """解析 **粗体**、`行内代码`、[文字](链接)。"""
-    for piece in INLINE_RE.split(text):
+    """解析 **粗体**、`行内代码`、[文字](链接)，支持三者相互嵌套。"""
+    codes = []
+
+    def _stash(m):
+        codes.append(m.group(1))
+        return f"{PH_OPEN}{len(codes) - 1}{PH_CLOSE}"
+
+    def _emit(segment, bold, color=None):
+        """把含占位符的片段展开成若干 run。"""
+        pos = 0
+        for m in PH_RE.finditer(segment):
+            if m.start() > pos:
+                r = p.add_run(segment[pos:m.start()])
+                _set_run_font(r, size, bold=bold, color=color)
+            r = p.add_run(codes[int(m.group(1))])
+            _set_run_font(r, size - 0.5, ea=EA_BODY, ascii_font=ASCII_MONO,
+                          color="C7254E")
+            pos = m.end()
+        if pos < len(segment):
+            r = p.add_run(segment[pos:])
+            _set_run_font(r, size, bold=bold, color=color)
+
+    protected = CODE_SPAN_RE.sub(_stash, text)
+    for piece in INLINE_RE.split(protected):
         if not piece:
             continue
         if piece.startswith("**") and piece.endswith("**") and len(piece) > 4:
-            r = p.add_run(piece[2:-2])
-            _set_run_font(r, size, bold=True)
+            _emit(piece[2:-2], bold=True)
         elif piece.startswith("`") and piece.endswith("`") and len(piece) > 2:
             r = p.add_run(piece[1:-1])
             _set_run_font(r, size - 0.5, ea=EA_BODY, ascii_font=ASCII_MONO,
                           color="C7254E")
         elif piece.startswith("[") and "](" in piece:
             label = piece[1:piece.index("](")]
-            r = p.add_run(label)
-            _set_run_font(r, size, bold=base_bold, color="1F4E79")
-            r.font.underline = True
+            _emit(label, bold=base_bold, color="1F4E79")
+            if p.runs:
+                p.runs[-1].font.underline = True
         else:
-            r = p.add_run(piece)
-            _set_run_font(r, size, bold=base_bold)
+            _emit(piece, bold=base_bold)
 
 
 # ---------------------------------------------------------------- 表格
